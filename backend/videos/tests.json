@@ -1,0 +1,28 @@
+{
+  "tests": [
+    {
+      "name": "Get all videos",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": [],
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create new video",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "title": "Поздравление классному руководителю",
+        "file_url": "https://example.com/video.mp4",
+        "teacher_name": "Иванова М.А."
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "id": "string",
+        "title": "Поздравление классному руководителю"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
