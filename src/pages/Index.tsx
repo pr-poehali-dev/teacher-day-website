@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import Icon from '@/components/ui/icon';
+import FallingLeaves from '@/components/FallingLeaves';
 
 interface Video {
   id: string;
@@ -24,9 +25,12 @@ export default function Index() {
     file_url: '',
     teacher_name: ''
   });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
 
   const API_URL = 'https://functions.poehali.dev/697c4fb0-53e9-48c4-8e3c-562e77967c89';
+  const UPLOAD_URL = 'https://functions.poehali.dev/1a21891e-f7e3-4c3d-a275-e84a21c062b7';
 
   useEffect(() => {
     if (activeTab === 'greetings') {
@@ -48,20 +52,74 @@ export default function Index() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 100 * 1024 * 1024) {
+        toast({
+          title: 'Файл слишком большой',
+          description: 'Максимальный размер файла 100 МБ',
+          variant: 'destructive'
+        });
+        return;
+      }
+      setVideoFile(file);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setUploadProgress(0);
 
     try {
+      let videoUrl = formData.file_url;
+
+      if (videoFile) {
+        setUploadProgress(25);
+        const reader = new FileReader();
+        
+        const fileDataUrl = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(videoFile);
+        });
+
+        setUploadProgress(50);
+
+        const uploadResponse = await fetch(UPLOAD_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            file: fileDataUrl,
+            fileName: videoFile.name
+          })
+        });
+
+        const uploadData = await uploadResponse.json();
+        
+        if (uploadData.error) {
+          throw new Error(uploadData.error);
+        }
+
+        videoUrl = uploadData.url;
+        setUploadProgress(75);
+      }
+
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          file_url: videoUrl
+        })
       });
 
       const data = await response.json();
+      setUploadProgress(100);
 
       toast({
         title: 'Успешно!',
@@ -69,15 +127,17 @@ export default function Index() {
       });
 
       setFormData({ title: '', file_url: '', teacher_name: '' });
+      setVideoFile(null);
       setActiveTab('greetings');
     } catch (error) {
       toast({
         title: 'Ошибка',
-        description: 'Не удалось загрузить видео',
+        description: error instanceof Error ? error.message : 'Не удалось загрузить видео',
         variant: 'destructive'
       });
     } finally {
       setIsLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -92,6 +152,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-red-50">
+      <FallingLeaves />
       <nav className="bg-white/80 backdrop-blur-sm border-b border-orange-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -189,19 +250,62 @@ export default function Index() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="video">Ссылка на видео</Label>
-                    <Textarea
-                      id="video"
-                      placeholder="Вставьте ссылку на видео (YouTube, Google Drive, и т.д.)"
-                      value={formData.file_url}
-                      onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
-                      required
-                      rows={3}
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="video-file">Загрузить видеофайл</Label>
+                      <Input
+                        id="video-file"
+                        type="file"
+                        accept="video/*"
+                        onChange={handleFileChange}
+                        className="cursor-pointer"
+                      />
+                      {videoFile && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Icon name="Check" size={14} className="text-green-600" />
+                          {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(2)} МБ)
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white px-2 text-muted-foreground">или</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="video">Ссылка на видео</Label>
+                      <Textarea
+                        id="video"
+                        placeholder="Вставьте ссылку на видео (YouTube, Google Drive, и т.д.)"
+                        value={formData.file_url}
+                        onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
+                        disabled={!!videoFile}
+                        rows={3}
+                      />
+                    </div>
                   </div>
 
-                  <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+                  {isLoading && uploadProgress > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Загрузка...</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div 
+                          className="bg-primary h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full" size="lg" disabled={isLoading || (!videoFile && !formData.file_url)}>
                     {isLoading ? (
                       <>
                         <Icon name="Loader2" size={18} className="animate-spin mr-2" />
